@@ -2,302 +2,276 @@
 <html lang="id">
 <head>
 <meta charset="UTF-8">
-<title>Aetherfall 2.5D – FIXED</title>
-
+<title>Aetherfall – All In One</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-body{
-  margin:0;
-  overflow:hidden;
-  background:#000;
-  color:#fff;
-  font-family:Segoe UI,Arial;
+body{margin:0;background:#05050d;color:#fff;font-family:Segoe UI;overflow:hidden}
+canvas{display:block}
+#menu,#pause,#cine{
+ position:fixed;inset:0;z-index:20;
+ display:flex;flex-direction:column;
+ align-items:center;justify-content:center;
+ background:rgba(0,0,0,.9)
 }
-
-/* === CANVAS === */
-canvas{
-  position:fixed;
-  inset:0;
-  z-index:0;
+#ui,#minimap{
+ position:fixed;z-index:10;
+ background:rgba(0,0,0,.6);
+ padding:10px;border-radius:10px
 }
-
-/* === UI LAYER === */
-#menu,#story,#pause,#ui,#shop{
-  position:fixed;
-  z-index:10;
-  background:rgba(0,0,0,.7);
-  padding:10px;
-  border-radius:8px;
+#ui{bottom:10px;left:50%;transform:translateX(-50%);text-align:center}
+#minimap{top:10px;left:10px;font-size:12px}
+button{
+ background:#4a6cff;color:#fff;border:none;
+ padding:6px 10px;margin:2px;border-radius:6px
 }
-
-#menu,#story,#pause{
-  inset:0;
-  display:flex;
-  flex-direction:column;
-  justify-content:center;
-  align-items:center;
-}
-
-#ui{top:10px;left:10px;font-size:12px}
-#shop{bottom:10px;right:10px;display:none}
-
-button{margin:3px;padding:6px 10px}
 </style>
 </head>
 
 <body>
 
 <div id="menu">
-  <h1>AETHERFALL</h1>
-  <p>Chronicles of the Realms</p>
-  <button onclick="startGame()">Start</button>
+<h1>AETHERFALL</h1>
+<p>2.5D Action RPG</p>
+<button onclick="startGame()">START GAME</button>
 </div>
 
-<div id="story" style="display:none">
-  <p id="storyText"></p>
-  <button onclick="nextStory()">Next</button>
-</div>
-
-<div id="pause" style="display:none">
-  <h2>Paused</h2>
-  <button onclick="resume()">Resume</button>
-  <button onclick="location.reload()">Restart</button>
-</div>
+<div id="cine" style="display:none"><h2 id="cineText"></h2></div>
+<div id="pause" style="display:none"><h2>PAUSED</h2></div>
 
 <div id="ui" style="display:none">
-  <div id="stats"></div>
-  <button onclick="skill('fire')">🔥 Fire</button>
-  <button onclick="skill('ice')">❄ Ice</button>
-  <button onclick="skill('light')">⚡ Light</button>
-  <button onclick="usePotion()">🧪 Potion</button>
-  <div id="quest"></div>
+<div id="stats"></div>
+<button onclick="skill('fire')">🔥</button>
+<button onclick="skill('ice')">❄</button>
+<button onclick="dash()">💨</button>
+<button onclick="heal()">🧪</button>
 </div>
 
-<div id="shop">
-  <h3>Merchant</h3>
-  <button onclick="buyPotion()">Potion (20G)</button>
-  <button onclick="buySword()">Iron Sword (100G)</button>
-  <button onclick="closeShop()">Close</button>
-</div>
+<div id="minimap"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<canvas id="game"></canvas>
 
 <script>
-/* ================= STORY ================= */
-const story=[
- "Dunia Aetherfall dulunya damai.",
- "Dungeon kuno muncul membawa korupsi.",
- "Para penjaga telah gugur.",
- "Kini, seorang petualang bangkit."
-];
-let storyIndex=0;
+/* =====================================================
+   CORE & CANVAS
+===================================================== */
+const c=document.getElementById("game"),ctx=c.getContext("2d");
+function resize(){c.width=innerWidth;c.height=innerHeight}
+resize();addEventListener("resize",resize);
 
-/* ================= STATE ================= */
-let started=false,paused=false;
+let keys={},started=false,paused=false;
+onkeydown=e=>{keys[e.key]=1;if(e.key==="Escape")togglePause()}
+onkeyup=e=>keys[e.key]=0;
 
-/* ================= THREE CORE ================= */
-const scene=new THREE.Scene();
-scene.background=new THREE.Color(0x223366);
+/* =====================================================
+   CAMERA
+===================================================== */
+let cam={x:0,y:0,shake:0};
 
-const camera=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,0.1,1000);
-camera.position.set(0,12,16);
-
-const renderer=new THREE.WebGLRenderer({antialias:true});
-renderer.setSize(innerWidth,innerHeight);
-document.body.appendChild(renderer.domElement);
-
-window.addEventListener("resize",()=>{
- camera.aspect=innerWidth/innerHeight;
- camera.updateProjectionMatrix();
- renderer.setSize(innerWidth,innerHeight);
-});
-
-/* ================= LIGHT ================= */
-scene.add(new THREE.AmbientLight(0xffffff,.6));
-const sun=new THREE.DirectionalLight(0xffffff,.7);
-sun.position.set(10,20,10);
-scene.add(sun);
-
-/* ================= GROUND ================= */
-const ground=new THREE.Mesh(
- new THREE.PlaneGeometry(200,200),
- new THREE.MeshStandardMaterial({color:0x1e2a4f})
-);
-ground.rotation.x=-Math.PI/2;
-scene.add(ground);
-
-/* ================= PLAYER ================= */
-const player={
- hp:150,max:150,lv:1,exp:0,gold:50,
- atk:20,def:5,
- cd:{fire:0,ice:0,light:0},
- potion:2,bonus:0,
- mesh:new THREE.Mesh(
-  new THREE.CapsuleGeometry(.6,1.2,4,8),
-  new THREE.MeshStandardMaterial({color:0x00ffff})
- )
+/* =====================================================
+   CLASS SYSTEM
+===================================================== */
+const CLASSES={
+ knight:{hp:260,atk:35,crit:.15,speed:2.6},
+ mage:{hp:180,atk:55,crit:.25,speed:2.9},
+ rogue:{hp:200,atk:40,crit:.4,speed:3.6}
 };
-player.mesh.position.y=1;
-scene.add(player.mesh);
+let classPick=localStorage.classPick||
+ prompt("Pilih class: knight / mage / rogue","knight");
+localStorage.classPick=classPick;
 
-/* ================= MERCHANT ================= */
-const merchant={
- mesh:new THREE.Mesh(
-  new THREE.BoxGeometry(1,2,1),
-  new THREE.MeshStandardMaterial({color:0xffff00})
- )
+/* =====================================================
+   PLAYER
+===================================================== */
+let p={
+ x:2000,y:2000,
+ hp:200,max:200,
+ atk:30,crit:.2,
+ speed:3,
+ dash:0,ifr:0,
+ potion:5,sp:0,lv:1
 };
-merchant.mesh.position.set(4,1,0);
-scene.add(merchant.mesh);
+Object.assign(p,CLASSES[classPick]);
 
-/* ================= ENEMY ================= */
-let enemies=[];
-function spawnEnemies(){
- enemies.forEach(e=>scene.remove(e.mesh));
- enemies=[];
- for(let i=0;i<4;i++){
-  const e={
-   hp:80+player.lv*20,
-   mesh:new THREE.Mesh(
-    new THREE.BoxGeometry(1,1.5,1),
-    new THREE.MeshStandardMaterial({color:0xff4444})
-   )
-  };
-  e.mesh.position.set(Math.random()*10-5,0.75,Math.random()*10-5);
-  scene.add(e.mesh);
-  enemies.push(e);
- }
-}
-spawnEnemies();
+/* =====================================================
+   WORLD
+===================================================== */
+const SIZE=4000;
+let biome="forest",wave=1;
+let enemies=[],boss=null;
+let fx=[];
 
-/* ================= PROJECTILE ================= */
-let projectiles=[];
-function skill(type){
- if(player.cd[type]>0||paused)return;
- const p={
-  type,life:100,
-  mesh:new THREE.Mesh(
-   new THREE.SphereGeometry(.3),
-   new THREE.MeshStandardMaterial({
-    color:type==="fire"?0xff6600:type==="ice"?0x66ccff:0xffff00
-   })
-  )
- };
- p.mesh.position.copy(player.mesh.position);
- scene.add(p.mesh);
- projectiles.push(p);
- player.cd[type]=120;
+/* =====================================================
+   AUDIO (SIMPLE BUT SANGAR)
+===================================================== */
+let AC=null;
+function beep(f=120,d=0.15){
+ if(!AC)AC=new(AudioContext||webkitAudioContext)();
+ let o=AC.createOscillator(),g=AC.createGain();
+ o.frequency.value=f;g.gain.value=.05;
+ o.connect(g).connect(AC.destination);
+ o.start();o.stop(AC.currentTime+d);
 }
 
-/* ================= INPUT ================= */
-let keys={};
-addEventListener("keydown",e=>{
- keys[e.key]=true;
- if(e.key==="Escape")togglePause();
-});
-addEventListener("keyup",e=>keys[e.key]=false);
-
-/* ================= UI ACTION ================= */
-function usePotion(){
- if(player.potion>0){
-  player.potion--;
-  player.hp=player.max;
- }
+/* =====================================================
+   START & CINEMATIC
+===================================================== */
+function cinematic(t){
+ cine.style.display="flex";cineText.innerText="";
+ let i=0,iv=setInterval(()=>{
+  cineText.innerText+=t[i++];
+  if(i>=t.length){
+   clearInterval(iv);
+   setTimeout(()=>cine.style.display="none",1200);
+  }
+ },40);
 }
-function buyPotion(){if(player.gold>=20){player.gold-=20;player.potion++;}}
-function buySword(){if(player.gold>=100){player.gold-=100;player.bonus=10;}}
-function closeShop(){shop.style.display="none";}
-
-/* ================= FLOW ================= */
 function startGame(){
  menu.style.display="none";
- story.style.display="flex";
- storyText.innerText=story[0];
+ ui.style.display="block";
+ cinematic("The Aether awakens once more...");
+ spawnWave();
+ started=true;
 }
-function nextStory(){
- storyIndex++;
- if(storyIndex>=story.length){
-  story.style.display="none";
-  ui.style.display="block";
-  started=true;
- }else storyText.innerText=story[storyIndex];
-}
-function togglePause(){
- paused=!paused;
- pause.style.display=paused?"flex":"none";
-}
-function resume(){paused=false;pause.style.display="none";}
 
-/* ================= LOOP ================= */
+/* =====================================================
+   ENEMY & BOSS
+===================================================== */
+function spawnWave(){
+ enemies=[];
+ for(let i=0;i<wave+6;i++){
+  enemies.push({
+   x:Math.random()*SIZE,
+   y:Math.random()*SIZE,
+   hp:80+wave*20,
+   flash:0
+  });
+ }
+ if(wave%4===0)spawnBoss();
+}
+function spawnBoss(){
+ boss={
+  x:SIZE/2,y:300,
+  hp:800+wave*200,
+  phase:1
+ };
+ cinematic("A corrupted guardian appears!");
+}
+
+/* =====================================================
+   ACTION
+===================================================== */
+function skill(type){
+ enemies.forEach(e=>{
+  let d=Math.hypot(p.x-e.x,p.y-e.y);
+  if(d<180){
+   let dmg=p.atk*(type==="fire"?2:1);
+   if(Math.random()<p.crit){dmg*=2;pop(e.x,e.y,"CRIT")}
+   e.hp-=dmg;e.flash=5;
+   pop(e.x,e.y,dmg);
+   beep(400);
+  }
+ });
+}
+function dash(){if(p.dash<=0)p.dash=20}
+function heal(){if(p.potion>0){p.potion--;p.hp=p.max;beep(200)}}
+
+/* =====================================================
+   UPDATE
+===================================================== */
 function update(){
  if(!started||paused)return;
 
- if(keys.w)player.mesh.position.z-=0.25;
- if(keys.s)player.mesh.position.z+=0.25;
- if(keys.a)player.mesh.position.x-=0.25;
- if(keys.d)player.mesh.position.x+=0.25;
+ let sp=p.speed+(p.dash>0?4:0);
+ if(keys.w||keys.ArrowUp)p.y-=sp;
+ if(keys.s||keys.ArrowDown)p.y+=sp;
+ if(keys.a||keys.ArrowLeft)p.x-=sp;
+ if(keys.d||keys.ArrowRight)p.x+=sp;
+ if(p.dash>0)p.dash--;
+ if(p.ifr>0)p.ifr--;
 
- enemies.forEach((e,i)=>{
-  e.mesh.lookAt(player.mesh.position);
-  e.mesh.position.lerp(player.mesh.position,.002);
-  if(e.mesh.position.distanceTo(player.mesh.position)<1.2){
-   player.hp-=0.3;
-  }
-  if(e.hp<=0){
-   scene.remove(e.mesh);
-   enemies.splice(i,1);
-   player.exp+=30;
-   player.gold+=10;
-  }
- });
-
- projectiles.forEach((p,i)=>{
-  p.mesh.position.z-=0.5;
-  p.life--;
-  enemies.forEach(e=>{
-   if(p.mesh.position.distanceTo(e.mesh.position)<1){
-    e.hp-=40+player.bonus;
-    scene.remove(p.mesh);
-    projectiles.splice(i,1);
+ enemies=enemies.filter(e=>{
+  let d=Math.hypot(p.x-e.x,p.y-e.y);
+  if(d<300){
+   e.x+=p.x>e.x?1.4:-1.4;
+   e.y+=p.y>e.y?1.4:-1.4;
+   if(d<20 && p.ifr<=0){
+    p.hp-=1;p.ifr=20;cam.shake=8;
    }
-  });
-  if(p.life<=0){
-   scene.remove(p.mesh);
-   projectiles.splice(i,1);
   }
+  if(e.hp<=0){p.sp+=10;return false}
+  if(e.flash>0)e.flash--;
+  return true;
  });
 
- if(player.exp>=100){
-  player.exp=0;
-  player.lv++;
-  player.max+=20;
-  player.hp=player.max;
+ if(boss){
+  let d=Math.hypot(p.x-boss.x,p.y-boss.y);
+  boss.x+=p.x>boss.x?1.2:-1.2;
+  if(d<35 && p.ifr<=0){
+   p.hp-=2;p.ifr=25;cam.shake=15;
+  }
+  if(boss.hp<=0){
+   boss=null;wave++;spawnWave();
+  }
  }
 
- Object.keys(player.cd).forEach(k=>player.cd[k]>0&&player.cd[k]--);
+ cam.x=p.x-c.width/2+(Math.random()-.5)*cam.shake;
+ cam.y=p.y-c.height/2+(Math.random()-.5)*cam.shake;
+ cam.shake*=.9;
 
- if(player.mesh.position.distanceTo(merchant.mesh.position)<2){
-  shop.style.display="block";
- }else shop.style.display="none";
+ if(p.hp<=0){alert("GAME OVER");location.reload()}
+}
 
- camera.position.x=player.mesh.position.x;
- camera.position.z=player.mesh.position.z+14;
- camera.lookAt(player.mesh.position);
+/* =====================================================
+   DRAW
+===================================================== */
+function draw(){
+ ctx.save();
+ ctx.translate(-cam.x,-cam.y);
+
+ ctx.fillStyle=biome==="forest"?"#1f4d2f":"#2b1b1b";
+ ctx.fillRect(0,0,SIZE,SIZE);
+
+ // shadow
+ ctx.fillStyle="rgba(0,0,0,.4)";
+ ctx.beginPath();ctx.ellipse(p.x,p.y+18,14,6,0,0,Math.PI*2);ctx.fill();
+
+ // player (2.5D fake)
+ ctx.fillStyle="#4fdcff";
+ ctx.beginPath();ctx.arc(p.x,p.y,10,0,Math.PI*2);ctx.fill();
+
+ enemies.forEach(e=>{
+  ctx.fillStyle=e.flash>0?"#fff":"crimson";
+  ctx.beginPath();ctx.arc(e.x,e.y,10,0,Math.PI*2);ctx.fill();
+ });
+
+ if(boss){
+  ctx.fillStyle="purple";
+  ctx.beginPath();ctx.arc(boss.x,boss.y,40,0,Math.PI*2);ctx.fill();
+ }
+
+ fx=fx.filter(f=>{
+  ctx.fillStyle=f.v==="CRIT"?"orange":"yellow";
+  ctx.fillText(f.v,f.x,f.y);
+  f.y--;return --f.life>0;
+ });
+
+ ctx.restore();
 
  stats.innerText=
-  `HP ${Math.floor(player.hp)}/${player.max} | Lv ${player.lv} | Gold ${player.gold} | Potion ${player.potion}`;
+ `Class ${classPick} | HP ${Math.floor(p.hp)}/${p.max} | LV ${p.lv} | SP ${p.sp} | Wave ${wave}`;
 
- if(player.hp<=0){
-  alert("Game Over");
-  location.reload();
- }
+ minimap.innerText=
+ `MAP\nX:${p.x|0}\nY:${p.y|0}\nEnemies:${enemies.length}`;
 }
 
-function loop(){
- requestAnimationFrame(loop);
- update();
- renderer.render(scene,camera);
-}
-loop();
+/* =====================================================
+   UTIL & LOOP
+===================================================== */
+function pop(x,y,v){fx.push({x,y,v,life:30})}
+function togglePause(){paused=!paused;pause.style.display=paused?"flex":"none"}
+
+(function loop(){update();draw();requestAnimationFrame(loop)})();
 </script>
+
 </body>
 </html>

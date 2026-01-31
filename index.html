@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,21 +8,34 @@
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
 </head>
+
 <body>
     <div id="ui-layer">
-        <div id="score-board">SCORE: <span id="score-val">0</span></div>
+        <div id="score-board">SCORE: <span id="score-val">0</span> <span style="font-size: 0.6em; color: #888;">| WAVE:
+                <span id="wave-val">1</span></span></div>
         <div id="start-screen" class="screen active">
             <h1>NEON VOID</h1>
-            <p>Press <span class="key-highlight">SPACE</span> or Click to Start</p>
-            <p class="controls">WASD / Arrow Keys to Move • CLICK / SPACE to Shoot</p>
+            <p>Press <span class="key-highlight">START</span> to Begin</p>
+            <button id="start-btn-main">START GAME</button>
+            <p class="controls">Desktop: WASD/Arrows to Move • CLICK to Shoot<br>Mobile: D-Pad to Move • TAP BUTTON to
+                Shoot</p>
         </div>
         <div id="game-over-screen" class="screen">
             <h1>GAME OVER</h1>
             <p>Final Score: <span id="final-score">0</span></p>
             <button id="restart-btn">RETRY</button>
         </div>
+
+        <!-- Mobile Controls -->
+        <div id="mobile-controls">
+            <div id="joystick-area">
+                <div id="joystick-knob"></div>
+            </div>
+            <button id="shoot-btn-mobile">SHOOT</button>
+        </div>
     </div>
     <canvas id="game-canvas"></canvas>
     <script src="game.js"></script>
 </body>
+
 </html>

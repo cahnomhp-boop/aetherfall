@@ -4,6 +4,26 @@ const ctx = canvas.getContext('2d');
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
+// --- Debug Logger ---
+const debugLog = document.getElementById('debug-log');
+function log(msg) {
+    if (!debugLog) return;
+    debugLog.innerHTML += `<div>${msg}</div>`;
+    // Keep only last 10 lines
+    const lines = debugLog.innerHTML.split('<div>');
+    if (lines.length > 10) {
+        debugLog.innerHTML = lines.slice(lines.length - 10).join('<div>');
+    }
+    console.log(msg);
+}
+
+window.onerror = function (msg, url, lineNo, columnNo, error) {
+    log(`ERROR: ${msg} at line ${lineNo}`);
+    return false;
+};
+
+log("Script loaded. Canvas size: " + canvas.width + "x" + canvas.height);
+
 // --- Game State ---
 let score = 0;
 let wave = 1;
@@ -25,6 +45,10 @@ const joystickArea = document.getElementById('joystick-area');
 const joystickKnob = document.getElementById('joystick-knob');
 const shootBtnMobile = document.getElementById('shoot-btn-mobile');
 
+// Check Elements
+if (!startBtnMain) log("ERROR: startBtnMain not found!");
+if (!joystickArea) log("ERROR: joystickArea not found!");
+
 // Input State
 const keys = {};
 const mouse = { x: canvas.width / 2, y: canvas.height / 2 };
@@ -33,10 +57,6 @@ let touchMove = { x: 0, y: 0, active: false }; // Joystick vector (-1 to 1)
 // --- Utility Functions ---
 function randomRange(min, max) {
     return Math.random() * (max - min) + min;
-}
-
-function randomColor() {
-    return `hsl(${Math.random() * 360}, 50%, 50%)`;
 }
 
 // --- Classes ---
@@ -112,8 +132,7 @@ class Player {
         if (this.y > canvas.height - this.radius) { this.y = canvas.height - this.radius; this.velocity.y = 0; }
 
         // Rotation Logic
-        // If using mouse, look at mouse. If touch, look at move direction if moving significantly
-        const isMouseActive = mouse.x !== canvas.width / 2 && mouse.y !== canvas.height / 2; // Simple check
+        const isMouseActive = mouse.x !== canvas.width / 2 && mouse.y !== canvas.height / 2;
 
         if (touchMove.active && (Math.abs(this.velocity.x) > 0.1 || Math.abs(this.velocity.y) > 0.1)) {
             this.angle = Math.atan2(this.velocity.y, this.velocity.x);
@@ -163,7 +182,7 @@ class Enemy {
         this.radius = radius;
         this.color = color;
         this.velocity = velocity;
-        this.type = type; // basic, shooter, dasher
+        this.type = type;
         this.shootTimer = 0;
     }
 
@@ -194,25 +213,12 @@ class Enemy {
             this.x += this.velocity.x;
             this.y += this.velocity.y;
         } else if (this.type === 'dasher') {
-            // Charge quickly then stop, then charge
             this.x += this.velocity.x * 1.5;
             this.y += this.velocity.y * 1.5;
         } else if (this.type === 'shooter') {
-            // Move slower, keep distance
             this.x += this.velocity.x * 0.5;
             this.y += this.velocity.y * 0.5;
-
-            // Shoot logic
             this.shootTimer++;
-            if (this.shootTimer > 100) {
-                const angle = Math.atan2(player.y - this.y, player.x - this.x);
-                // Enemy projectle
-                // Simplified: just push to same array but maybe give different color/tag?
-                // For simplicity in this iteration, we keep enemy logic simple.
-                // Or let's make enemies purely contact damage for now to save complexity space?
-                // Implementing enemy shooting needs a separate array to not hurt other enemies ideally.
-                // Let's stick to contact damage for now to ensure stability, maybe add bullets later if asked.
-            }
         }
     }
 }
@@ -251,7 +257,7 @@ class PowerUp {
     constructor(x, y, type) {
         this.x = x;
         this.y = y;
-        this.type = type; // 'spread', 'shield'
+        this.type = type;
         this.radius = 12;
         this.color = type === 'shield' ? '#00f3ff' : '#ff00ff';
         this.angle = 0;
@@ -287,63 +293,69 @@ let powerUps = [];
 let spawnInterval;
 
 function init() {
-    score = 0;
-    wave = 1;
-    frames = 0;
-    scoreVal.innerText = 0;
-    waveVal.innerText = 1;
+    try {
+        log("Init called");
+        score = 0;
+        wave = 1;
+        frames = 0;
+        scoreVal.innerText = 0;
+        waveVal.innerText = 1;
 
-    player = new Player(canvas.width / 2, canvas.height / 2);
-    projectiles = [];
-    enemies = [];
-    particles = [];
-    powerUps = []; // Clear
+        player = new Player(canvas.width / 2, canvas.height / 2);
+        projectiles = [];
+        enemies = [];
+        particles = [];
+        powerUps = [];
 
-    isGameRunning = true;
-    startScreen.classList.remove('active');
-    gameOverScreen.classList.remove('active');
+        isGameRunning = true;
+        startScreen.classList.remove('active');
+        gameOverScreen.classList.remove('active');
 
-    animate();
-    clearInterval(spawnInterval);
-    spawnInterval = setInterval(spawnEnemies, 1000);
+        cancelAnimationFrame(animationId); // Stop previous if any
+        animate();
+        clearInterval(spawnInterval);
+        spawnInterval = setInterval(spawnEnemies, 1000);
+        log("Game loop started");
+    } catch (e) {
+        log("Init error: " + e.message);
+    }
 }
 
 function spawnEnemies() {
     if (!isGameRunning) return;
+    try {
+        const r = Math.random() * (30 - 15) + 15;
+        let x, y;
+        if (Math.random() < 0.5) {
+            x = Math.random() < 0.5 ? 0 - r : canvas.width + r;
+            y = Math.random() * canvas.height;
+        } else {
+            x = Math.random() * canvas.width;
+            y = Math.random() < 0.5 ? 0 - r : canvas.height + r;
+        }
 
-    // Wave Logic: Decrease interval or increase count
-    // For now, simple logic based on score?
+        const hue = Math.random() * 360;
+        const color = `hsl(${hue}, 50%, 50%)`;
 
-    const r = Math.random() * (30 - 15) + 15;
-    let x, y;
-    if (Math.random() < 0.5) {
-        x = Math.random() < 0.5 ? 0 - r : canvas.width + r;
-        y = Math.random() * canvas.height;
-    } else {
-        x = Math.random() * canvas.width;
-        y = Math.random() < 0.5 ? 0 - r : canvas.height + r;
+        const angle = Math.atan2(player.y - y, player.x - x);
+        const speedMultiplier = 1 + (wave * 0.1);
+        const velocity = {
+            x: Math.cos(angle) * speedMultiplier,
+            y: Math.sin(angle) * speedMultiplier
+        };
+
+        let type = 'basic';
+        if (score > 100 && Math.random() < 0.3) type = 'dasher';
+        if (score > 300 && Math.random() < 0.2) type = 'shooter';
+
+        enemies.push(new Enemy(x, y, r, color, velocity, type));
+    } catch (e) {
+        log("Spawn error: " + e.message);
     }
-
-    const hue = Math.random() * 360;
-    const color = `hsl(${hue}, 50%, 50%)`;
-
-    const angle = Math.atan2(player.y - y, player.x - x);
-    const speedMultiplier = 1 + (wave * 0.1);
-    const velocity = {
-        x: Math.cos(angle) * speedMultiplier,
-        y: Math.sin(angle) * speedMultiplier
-    };
-
-    // Enemy Type chance logic
-    let type = 'basic';
-    if (score > 100 && Math.random() < 0.3) type = 'dasher';
-    if (score > 300 && Math.random() < 0.2) type = 'shooter';
-
-    enemies.push(new Enemy(x, y, r, color, velocity, type));
 }
 
 function spawnPowerUp(x, y) {
-    if (Math.random() < 0.1) { // 10% chance
+    if (Math.random() < 0.1) {
         const type = Math.random() < 0.5 ? 'spread' : 'shield';
         powerUps.push(new PowerUp(x, y, type));
     }
@@ -351,27 +363,26 @@ function spawnPowerUp(x, y) {
 
 function shoot() {
     if (!isGameRunning) return;
+    try {
+        const angle = player.angle;
 
-    const angle = player.angle;
-
-    const fireBullet = (offsetAngle = 0) => {
-        const vel = {
-            x: Math.cos(angle + offsetAngle) * 10,
-            y: Math.sin(angle + offsetAngle) * 10
+        const fireBullet = (offsetAngle = 0) => {
+            const vel = {
+                x: Math.cos(angle + offsetAngle) * 10,
+                y: Math.sin(angle + offsetAngle) * 10
+            };
+            projectiles.push(new Projectile(player.x, player.y, 4, '#00f3ff', vel));
         };
-        projectiles.push(new Projectile(player.x, player.y, 4, '#00f3ff', vel));
-    };
 
-    fireBullet();
+        fireBullet();
 
-    if (player.powerUp === 'spread') {
-        fireBullet(0.2);
-        fireBullet(-0.2);
+        if (player.powerUp === 'spread') {
+            fireBullet(0.2);
+            fireBullet(-0.2);
+        }
+    } catch (e) {
+        log("Shoot error: " + e.message);
     }
-
-    // Recoil effect?
-    // player.velocity.x -= Math.cos(angle);
-    // player.velocity.y -= Math.sin(angle);
 }
 
 
@@ -380,138 +391,138 @@ function animate() {
     animationId = requestAnimationFrame(animate);
     frames++;
 
-    // Bg clear
-    ctx.fillStyle = 'rgba(5, 5, 16, 0.2)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    try {
+        ctx.fillStyle = 'rgba(5, 5, 16, 0.2)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    player.update();
+        player.update();
 
-    particles.forEach((p, i) => {
-        if (p.alpha <= 0) particles.splice(i, 1);
-        else p.update();
-    });
+        particles.forEach((p, i) => {
+            if (p.alpha <= 0) particles.splice(i, 1);
+            else p.update();
+        });
 
-    // Powerups Update
-    powerUps.forEach((p, i) => {
-        p.draw();
-        const dist = Math.hypot(player.x - p.x, player.y - p.y);
-        if (dist - player.radius - p.radius < 1) {
-            // Apply effect
-            player.powerUp = p.type;
-            player.powerUpTimer = 600; // 10 seconds approx at 60fps
-            powerUps.splice(i, 1);
-        }
-    });
-
-    projectiles.forEach((p, i) => {
-        p.update();
-        if (p.x < 0 || p.x > canvas.width || p.y < 0 || p.y > canvas.height) {
-            setTimeout(() => projectiles.splice(i, 1), 0);
-        }
-    });
-
-    enemies.forEach((enemy, i) => {
-        // Simple Re-targeting for Basic enemies
-        if (frames % 60 === 0 && enemy.type === 'basic') {
-            const angle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
-            const speedMultiplier = 1 + (wave * 0.1);
-            enemy.velocity = { x: Math.cos(angle) * speedMultiplier, y: Math.sin(angle) * speedMultiplier };
-        }
-
-        enemy.update();
-
-        const dist = Math.hypot(player.x - enemy.x, player.y - enemy.y);
-        if (dist - enemy.radius - player.radius < 1) {
-            if (player.powerUp === 'shield') {
-                player.powerUp = null; // Lose shield
-                enemies.splice(i, 1); // Destroy enemy that hit shield
-                // Explosion
-                for (let j = 0; j < 10; j++) particles.push(new Particle(enemy.x, enemy.y, 3, enemy.color, { x: (Math.random() - 0.5) * 5, y: (Math.random() - 0.5) * 5 }));
-            } else {
-                cancelAnimationFrame(animationId);
-                isGameRunning = false;
-                finalScoreVal.innerText = score;
-                gameOverScreen.classList.add('active');
-                clearInterval(spawnInterval);
+        powerUps.forEach((p, i) => {
+            p.draw();
+            const dist = Math.hypot(player.x - p.x, player.y - p.y);
+            if (dist - player.radius - p.radius < 1) {
+                player.powerUp = p.type;
+                player.powerUpTimer = 600;
+                powerUps.splice(i, 1);
             }
-        }
+        });
 
-        projectiles.forEach((p, pIndex) => {
-            const pDist = Math.hypot(p.x - enemy.x, p.y - enemy.y);
-            if (pDist - enemy.radius - p.radius < 1) {
-                // Hit
-                for (let k = 0; k < 8; k++) {
-                    particles.push(new Particle(p.x, p.y, Math.random() * 2, enemy.color, {
-                        x: (Math.random() - 0.5) * 6,
-                        y: (Math.random() - 0.5) * 6
-                    }))
-                }
+        projectiles.forEach((p, i) => {
+            p.update();
+            if (p.x < 0 || p.x > canvas.width || p.y < 0 || p.y > canvas.height) {
+                setTimeout(() => projectiles.splice(i, 1), 0);
+            }
+        });
 
-                if (enemy.radius - 10 > 10) {
-                    score += 10;
-                    enemy.radius -= 10;
-                    setTimeout(() => projectiles.splice(pIndex, 1), 0);
+        enemies.forEach((enemy, i) => {
+            if (frames % 60 === 0 && enemy.type === 'basic') {
+                const angle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+                const speedMultiplier = 1 + (wave * 0.1);
+                enemy.velocity = { x: Math.cos(angle) * speedMultiplier, y: Math.sin(angle) * speedMultiplier };
+            }
+
+            enemy.update();
+
+            const dist = Math.hypot(player.x - enemy.x, player.y - enemy.y);
+            if (dist - enemy.radius - player.radius < 1) {
+                if (player.powerUp === 'shield') {
+                    player.powerUp = null;
+                    enemies.splice(i, 1);
+                    for (let j = 0; j < 10; j++) particles.push(new Particle(enemy.x, enemy.y, 3, enemy.color, { x: (Math.random() - 0.5) * 5, y: (Math.random() - 0.5) * 5 }));
                 } else {
-                    score += 20;
-                    spawnPowerUp(enemy.x, enemy.y);
-                    setTimeout(() => {
-                        enemies.splice(i, 1);
-                        projectiles.splice(pIndex, 1);
-                    }, 0);
-                }
-                scoreVal.innerText = score;
-
-                // Wave Progress
-                if (score > wave * 500) {
-                    wave++;
-                    waveVal.innerText = wave;
-                    // Flash effect or something
+                    cancelAnimationFrame(animationId);
+                    isGameRunning = false;
+                    finalScoreVal.innerText = score;
+                    gameOverScreen.classList.add('active');
+                    clearInterval(spawnInterval);
+                    log("Game Over");
                 }
             }
-        })
-    });
+
+            projectiles.forEach((p, pIndex) => {
+                const pDist = Math.hypot(p.x - enemy.x, p.y - enemy.y);
+                if (pDist - enemy.radius - p.radius < 1) {
+                    for (let k = 0; k < 8; k++) {
+                        particles.push(new Particle(p.x, p.y, Math.random() * 2, enemy.color, {
+                            x: (Math.random() - 0.5) * 6,
+                            y: (Math.random() - 0.5) * 6
+                        }))
+                    }
+
+                    if (enemy.radius - 10 > 10) {
+                        score += 10;
+                        enemy.radius -= 10;
+                        setTimeout(() => projectiles.splice(pIndex, 1), 0);
+                    } else {
+                        score += 20;
+                        spawnPowerUp(enemy.x, enemy.y);
+                        setTimeout(() => {
+                            enemies.splice(i, 1);
+                            projectiles.splice(pIndex, 1);
+                        }, 0);
+                    }
+                    scoreVal.innerText = score;
+
+                    if (score > wave * 500) {
+                        wave++;
+                        waveVal.innerText = wave;
+                    }
+                }
+            })
+        });
+    } catch (e) {
+        log("Animate error: " + e.message);
+        isGameRunning = false; // Stop loop on error
+    }
 }
 
 // --- Input Handling ---
 
-// Keyboard
 window.addEventListener('keydown', (e) => {
     keys[e.key.toLowerCase()] = true;
-    if (e.code === 'Space' && !isGameRunning && !gameOverScreen.classList.contains('active')) {
-        init();
-    } else if (e.code === 'Space' && isGameRunning) {
-        shoot(); // Space now shoots too
+    if (e.code === 'Space') {
+        if (!isGameRunning && !gameOverScreen.classList.contains('active')) {
+            init();
+        } else if (isGameRunning) {
+            shoot();
+        }
     }
 });
 window.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
 
-// Mouse
 window.addEventListener('mousemove', (e) => {
     mouse.x = e.clientX;
     mouse.y = e.clientY;
 });
 window.addEventListener('mousedown', () => shoot());
 
-// Touch Setup
-joystickArea.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    touchMove.active = true;
-    updateJoystick(e.touches[0]);
-});
-joystickArea.addEventListener('touchmove', (e) => {
-    e.preventDefault();
-    updateJoystick(e.touches[0]);
-});
-joystickArea.addEventListener('touchend', (e) => {
-    e.preventDefault();
-    touchMove.active = false;
-    touchMove.x = 0;
-    touchMove.y = 0;
-    joystickKnob.style.top = '50%';
-    joystickKnob.style.left = '50%';
-});
+if (joystickArea) {
+    joystickArea.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        touchMove.active = true;
+        updateJoystick(e.touches[0]);
+    });
+    joystickArea.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        updateJoystick(e.touches[0]);
+    });
+    joystickArea.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        touchMove.active = false;
+        touchMove.x = 0;
+        touchMove.y = 0;
+        joystickKnob.style.top = '50%';
+        joystickKnob.style.left = '50%';
+    });
+}
 
 function updateJoystick(touch) {
+    if (!joystickArea) return; // Safety
     const rect = joystickArea.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
@@ -533,22 +544,34 @@ function updateJoystick(touch) {
     touchMove.y = moveY / (rect.height / 2);
 }
 
-shootBtnMobile.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    shoot();
-    shootBtnMobile.style.background = 'var(--neon-pink)';
-});
-shootBtnMobile.addEventListener('touchend', (e) => {
-    e.preventDefault();
-    shootBtnMobile.style.background = 'rgba(255, 0, 255, 0.1)';
-});
+if (shootBtnMobile) {
+    shootBtnMobile.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        shoot();
+        shootBtnMobile.style.background = 'var(--neon-pink)';
+    });
+    shootBtnMobile.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        shootBtnMobile.style.background = 'rgba(255, 0, 255, 0.1)';
+    });
+}
 
-// UI Buttons
-startBtnMain.addEventListener('click', init);
-startBtnMain.addEventListener('touchstart', (e) => { e.preventDefault(); init(); }); // Better mobile response
+if (startBtnMain) {
+    startBtnMain.addEventListener('click', () => {
+        log("Start btn clicked");
+        init();
+    });
+    startBtnMain.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        log("Start btn touched");
+        init();
+    });
+}
 
-restartBtn.addEventListener('click', init);
-restartBtn.addEventListener('touchstart', (e) => { e.preventDefault(); init(); });
+if (restartBtn) {
+    restartBtn.addEventListener('click', init);
+    restartBtn.addEventListener('touchstart', (e) => { e.preventDefault(); init(); });
+}
 
 window.addEventListener('resize', () => {
     canvas.width = window.innerWidth;
